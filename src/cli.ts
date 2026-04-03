@@ -1,15 +1,11 @@
 import { Command } from 'commander';
 import { existsSync } from 'fs';
 import { readFile } from 'fs/promises';
-import { homedir } from 'os';
-import { join } from 'path';
 import { AgentOrchestrator } from './agent/orchestrator';
 import { ToolRegistry } from './tools';
 import { PermissionGate } from './permissions/gate';
 import { createLLMProvider } from './providers/llm';
 import type { LLMConfig, PermissionMode } from './agent/types';
-import chalk from 'chalk';
-import inquirer from 'inquirer';
 
 const program = new Command();
 
@@ -49,6 +45,15 @@ program
     await startChat(program.opts());
   });
 
+const log = {
+  blue: (s: string) => console.log('\x1b[36m' + s + '\x1b[0m'),
+  gray: (s: string) => console.log('\x1b[90m' + s + '\x1b[0m'),
+  green: (s: string) => console.log('\x1b[32m' + s + '\x1b[0m'),
+  red: (s: string) => console.log('\x1b[31m' + s + '\x1b[0m'),
+  white: (s: string) => console.log(s),
+  yellow: (s: string) => console.log('\x1b[33m' + s + '\x1b[0m'),
+};
+
 async function loadConfig() {
   const configPaths = [
     join(process.env.HOME || '', '.enterprise-cli', 'config.json'),
@@ -60,7 +65,8 @@ async function loadConfig() {
       try {
         const content = await readFile(path, 'utf-8');
         return JSON.parse(content);
-      } catch {}
+      } catch {
+      }
     }
   }
 
@@ -87,23 +93,17 @@ async function getProviderConfig(cmdOptions: any): Promise<LLMConfig> {
   }
 
   if (!apiKey && provider !== 'ollama') {
-    console.log(chalk.yellow('No API key found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY'));
-    const answers = await inquirer.prompt([
-      {
-        type: 'input',
-        name: 'apiKey',
-        message: `Enter ${provider} API key:`,
-      },
-    ]);
-    apiKey = answers.apiKey;
+    log.yellow('No API key found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY');
+    log.yellow('Usage: export ANTHROPIC_API_KEY=sk-ant-...');
+    process.exit(1);
   }
 
   return { provider: provider as any, apiKey, baseUrl, model: model! };
 }
 
 async function startChat(options: any) {
-  console.log(chalk.blue('Enterprise CLI v1.0.0'));
-  console.log(chalk.gray('Starting chat session...\n'));
+  log.blue('Enterprise CLI v1.0.0');
+  log.gray('Starting chat session...\n');
 
   const cwd = options.cwd || process.cwd();
   const llmConfig = await getProviderConfig(options);
@@ -124,12 +124,12 @@ async function startChat(options: any) {
 
   await agent.initialize();
 
-  console.log(chalk.green('Ready!'));
-  console.log(chalk.gray(`Permission mode: ${permissionGate.getModeDescription()}`));
-  console.log(chalk.gray(`Working directory: ${cwd}\n`));
+  log.green('Ready!');
+  log.gray(`Permission mode: ${permissionGate.getModeDescription()}`);
+  log.gray(`Working directory: ${cwd}\n`);
 
   if (options.provider === 'ollama') {
-    console.log(chalk.yellow('Note: Using Ollama - make sure it\'s running on localhost:11434\n'));
+    log.yellow('Note: Using Ollama - make sure it\'s running on localhost:11434\n');
   }
 
   const readline = await import('readline');
@@ -139,19 +139,19 @@ async function startChat(options: any) {
   });
 
   const ask = () => {
-    rl.question(chalk.green('\n> '), async (input) => {
+    rl.question('\x1b[32m\n> \x1b[0m', async (input) => {
       if (!input.trim()) {
         ask();
         return;
       }
 
       if (input === '/exit' || input === '/quit') {
-        console.log(chalk.gray('Goodbye!'));
+        log.gray('Goodbye!');
         process.exit(0);
       }
 
       if (input === '/mode') {
-        console.log(chalk.gray(`Current mode: ${permissionGate.getModeDescription()}`));
+        log.gray(`Current mode: ${permissionGate.getModeDescription()}`);
         ask();
         return;
       }
@@ -160,31 +160,31 @@ async function startChat(options: any) {
         const newMode = input.slice(6).trim() as PermissionMode;
         if (PermissionGate.getAvailableModes().includes(newMode)) {
           permissionGate.setMode(newMode);
-          console.log(chalk.green(`Permission mode set to: ${newMode}`));
+          log.green(`Permission mode set to: ${newMode}`);
         } else {
-          console.log(chalk.red(`Invalid mode. Available: ${PermissionGate.getAvailableModes().join(', ')}`));
+          log.red(`Invalid mode. Available: ${PermissionGate.getAvailableModes().join(', ')}`);
         }
         ask();
         return;
       }
 
       if (input === '/help') {
-        console.log(chalk.gray(`
+        log.gray(`
 Commands:
   /mode          - Show current permission mode
   /mode <mode>   - Change permission mode (default, acceptEdits, plan, auto)
   /help          - Show this help
   /exit          - Exit the session
-        `));
+        `);
         ask();
         return;
       }
 
       try {
         const response = await agent.chat(input);
-        console.log(chalk.white(response));
+        log.white(response);
       } catch (error: any) {
-        console.log(chalk.red(`Error: ${error.message}`));
+        log.red(`Error: ${error.message}`);
       }
 
       ask();
@@ -217,9 +217,13 @@ async function runOnce(prompt: string, options: any) {
     const response = await agent.chat(prompt);
     console.log(response);
   } catch (error: any) {
-    console.error(chalk.red(`Error: ${error.message}`));
+    log.red(`Error: ${error.message}`);
     process.exit(1);
   }
+}
+
+function join(...paths: string[]): string {
+  return paths.join('/').replace(/\/+/g, '/');
 }
 
 program.parse();

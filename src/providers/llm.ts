@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
-import type { LLMConfig, LLMResponse, LLMInterface, Message, ProviderType } from '../agent/types';
+import type { LLMConfig, LLMResponse, LLMInterface, Message, ProviderType, ContentBlock } from '../agent/types';
 
 export class AnthropicProvider implements LLMInterface {
   private client: Anthropic;
@@ -25,22 +25,22 @@ export class AnthropicProvider implements LLMInterface {
       model: this.model,
       max_tokens: this.maxTokens,
       temperature: this.temperature,
-      messages: anthropicMessages,
+      messages: anthropicMessages as any,
     });
 
     return this.convertResponse(response);
   }
 
-  private convertMessages(messages: Message[]): Anthropic.MessageParam[] {
+  private convertMessages(messages: Message[]): any[] {
     return messages.map(msg => {
       if (msg.role === 'tool') {
-        const content = msg.content as string;
+        const content = typeof msg.content === 'string' ? msg.content : '';
         return {
           role: 'user' as const,
           content: [
             {
               type: 'tool_result' as const,
-              tool_use_id: msg.tool_use_id,
+              tool_use_id: msg.tool_use_id || '',
               content: content,
             }
           ]
@@ -48,30 +48,30 @@ export class AnthropicProvider implements LLMInterface {
       }
 
       if (typeof msg.content === 'string') {
-        return { role: msg.role as 'user' | 'assistant' | 'system', content: msg.content };
+        return { role: msg.role as any, content: msg.content };
       }
 
-      const blocks = (msg.content as any[]).map(block => {
+      const blocks = (msg.content as ContentBlock[]).map((block: ContentBlock) => {
         if (block.type === 'text') {
-          return { type: 'text' as const, text: block.text };
+          return { type: 'text' as const, text: (block as any).text };
         }
         if (block.type === 'tool_use') {
           return {
             type: 'tool_use' as const,
-            id: block.id,
-            name: block.name,
-            input: block.input,
+            id: (block as any).id,
+            name: (block as any).name,
+            input: (block as any).input,
           };
         }
         return block;
       });
 
-      return { role: msg.role as 'user' | 'assistant' | 'system', content: blocks };
+      return { role: msg.role as any, content: blocks };
     });
   }
 
-  private convertResponse(response: Anthropic.Message): LLMResponse {
-    const content = response.content.map(block => {
+  private convertResponse(response: any): LLMResponse {
+    const content: ContentBlock[] = response.content.map((block: any) => {
       if (block.type === 'text') {
         return { type: 'text' as const, text: block.text };
       }
@@ -90,8 +90,8 @@ export class AnthropicProvider implements LLMInterface {
       content,
       stop_reason: response.stop_reason as 'end_turn' | 'max_tokens' | 'stop_sequence',
       usage: {
-        input_tokens: response.usage.input_tokens,
-        output_tokens: response.usage.output_tokens,
+        input_tokens: response.usage?.input_tokens || 0,
+        output_tokens: response.usage?.output_tokens || 0,
       },
     };
   }
@@ -120,32 +120,27 @@ export class OpenAIProvider implements LLMInterface {
       model: this.model,
       max_tokens: this.maxTokens,
       temperature: this.temperature,
-      messages: openAIMessages,
-      tools: this.getTools(),
+      messages: openAIMessages as any,
     });
 
     return this.convertResponse(response);
   }
 
-  private getTools() {
-    return undefined;
-  }
-
-  private convertMessages(messages: Message[]): OpenAI.Chat.ChatCompletionMessageParam[] {
+  private convertMessages(messages: Message[]): any[] {
     return messages.map(msg => {
       if (msg.role === 'tool') {
         return {
           role: 'tool' as const,
-          tool_call_id: msg.tool_use_id,
-          content: msg.content as string,
+          tool_call_id: msg.tool_use_id || '',
+          content: typeof msg.content === 'string' ? msg.content : '',
         };
       }
 
-      if (msg.tool_calls) {
+      if (msg.tool_calls && msg.tool_calls.length > 0) {
         return {
-          role: msg.role as 'user' | 'assistant' | 'system',
-          content: typeof msg.content === 'string' ? msg.content : undefined,
-          tool_calls: msg.tool_calls.map(tc => ({
+          role: msg.role as any,
+          content: typeof msg.content === 'string' ? msg.content : '',
+          tool_calls: msg.tool_calls.map((tc: any) => ({
             id: tc.id,
             type: 'function' as const,
             function: {
@@ -157,23 +152,23 @@ export class OpenAIProvider implements LLMInterface {
       }
 
       if (typeof msg.content === 'string') {
-        return { role: msg.role as 'user' | 'assistant' | 'system', content: msg.content };
+        return { role: msg.role as any, content: msg.content };
       }
 
-      const content = (msg.content as any[])
+      const content = (msg.content as ContentBlock[])
         .filter(b => b.type === 'text')
-        .map(b => b.text)
+        .map(b => (b as any).text)
         .join('\n');
 
-      return { role: msg.role as 'user' | 'assistant' | 'system', content };
+      return { role: msg.role as any, content };
     });
   }
 
-  private convertResponse(response: OpenAI.Chat.ChatCompletion): LLMResponse {
+  private convertResponse(response: any): LLMResponse {
     const choice = response.choices[0];
     const message = choice.message;
 
-    const content: any[] = [];
+    const content: ContentBlock[] = [];
 
     if (message.content) {
       content.push({ type: 'text', text: message.content });
@@ -215,13 +210,13 @@ export class OllamaProvider implements LLMInterface {
   }
 
   async chat(messages: Message[]): Promise<LLMResponse> {
-    const openAIMessages = messages.map(msg => {
+    const msgs = messages.map(msg => {
       if (typeof msg.content === 'string') {
         return { role: msg.role, content: msg.content };
       }
-      const content = (msg.content as any[])
+      const content = (msg.content as ContentBlock[])
         .filter(b => b.type === 'text')
-        .map(b => b.text)
+        .map(b => (b as any).text)
         .join('\n');
       return { role: msg.role, content };
     });
@@ -231,7 +226,7 @@ export class OllamaProvider implements LLMInterface {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: this.model,
-        messages: openAIMessages,
+        messages: msgs,
         stream: false,
       }),
     });
@@ -240,7 +235,7 @@ export class OllamaProvider implements LLMInterface {
       throw new Error(`Ollama API error: ${response.statusText}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as any;
 
     return {
       content: [{ type: 'text', text: data.message?.content || '' }],

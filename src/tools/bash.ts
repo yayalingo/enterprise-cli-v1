@@ -1,4 +1,4 @@
-import { execa, type ExecaReturnValue } from 'execa';
+import { execa } from 'execa';
 import { existsSync } from 'fs';
 import type { ToolDefinition, ToolResult } from '../agent/types';
 

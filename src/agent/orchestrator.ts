@@ -72,16 +72,18 @@ export class AgentOrchestrator {
       if (textContent) {
         assistantMessage.content = [
           { type: 'text', text: textContent },
-          ...toolCalls.map(tc => ({
-            type: 'tool_use',
-            id: tc.id || `tc_${Date.now()}`,
-            name: tc.name,
-            input: tc.input,
-          })),
+          ...toolCalls.map(tc => {
+            return {
+              type: 'tool_use' as const,
+              id: tc.id || `tc_${Date.now()}`,
+              name: tc.name,
+              input: tc.input,
+            };
+          }),
         ];
       } else if (toolCalls.length > 0) {
         assistantMessage.content = toolCalls.map(tc => ({
-          type: 'tool_use',
+          type: 'tool_use' as const,
           id: tc.id || `tc_${Date.now()}`,
           name: tc.name,
           input: tc.input,
@@ -142,7 +144,6 @@ export class AgentOrchestrator {
             role: 'tool',
             tool_use_id: toolCall.id || '',
             content: `Error: ${error.message}`,
-            is_error: true,
           });
         }
       }
