@@ -55,6 +55,7 @@ program
 program
     .command('chat')
     .description('Start an interactive chat session')
+    .option('-s, --session <id>', 'Resume session by ID')
     .action(async (options) => {
     await startChat({ ...program.opts(), ...options });
 });
@@ -63,6 +64,26 @@ program
     .description('Run a single prompt')
     .action(async (prompt, options) => {
     await runOnce(prompt, { ...program.opts(), ...options });
+});
+program
+    .command('sessions')
+    .description('List saved sessions')
+    .action(async () => {
+    await listSessions();
+});
+program
+    .command('governance')
+    .description('Show governance status and audit logs')
+    .option('--approve-tool <name>', 'Approve a tool for use')
+    .action(async (options) => {
+    await showGovernance(options);
+});
+program
+    .command('mcp')
+    .description('Manage MCP servers')
+    .option('--add <name> <url>', 'Add MCP server')
+    .action(async (options) => {
+    await manageMCP(options);
 });
 program.parse();
 const log = {
@@ -241,6 +262,81 @@ async function runOnce(prompt, options) {
     catch (error) {
         log.red(`Error: ${error.message}`);
         process.exit(1);
+    }
+}
+async function listSessions() {
+    const { SessionManager } = await Promise.resolve().then(() => __importStar(require('./agent/session')));
+    const manager = new SessionManager();
+    const sessions = await manager.list();
+    if (sessions.length === 0) {
+        log.gray('No saved sessions');
+        return;
+    }
+    log.blue('Saved Sessions:');
+    for (const session of sessions) {
+        const date = new Date(session.lastActivityAt).toLocaleString();
+        log.white(`  ${session.id} - ${session.workingDirectory} (${date})`);
+    }
+}
+async function showGovernance(options) {
+    const { GovernanceService } = await Promise.resolve().then(() => __importStar(require('./permissions/governance')));
+    const governance = new GovernanceService();
+    if (options.approveTool) {
+        await governance.approveTool(options.approveTool, 'admin');
+        log.green(`Approved tool: ${options.approveTool}`);
+        return;
+    }
+    log.blue('Tool Governance Status:');
+    const configs = governance.getAllToolConfigs();
+    for (const config of configs) {
+        const status = config.isApproved ? log.green('✓') : log.yellow('⨯');
+        const approval = config.requiresApproval ? '(requires approval)' : '';
+        log.white(`  ${status} ${config.name} ${approval}`);
+    }
+    log.blue('\nRecent Audit Logs:');
+    const logs = await governance.getAuditLogs(undefined, undefined, 10);
+    for (const entry of logs) {
+        const time = new Date(entry.timestamp).toLocaleString();
+        const success = entry.success ? log.green('✓') : log.red('⨯');
+        log.white(`  ${time} ${success} ${entry.action} ${entry.tool || ''}`);
+    }
+}
+async function manageMCP(options) {
+    const { MCPClient } = await Promise.resolve().then(() => __importStar(require('./tools/mcp')));
+    const mcp = new MCPClient();
+    if (options.add) {
+        const parts = options.add.split(' ');
+        if (parts.length < 2) {
+            log.red('Usage: --add <name> <url> [api-key]');
+            return;
+        }
+        const name = parts[0];
+        const url = parts[1];
+        const apiKey = parts[2];
+        await mcp.addServer({
+            name,
+            baseUrl: url,
+            apiKey,
+            tools: [],
+        });
+        log.green(`Added MCP server: ${name}`);
+        log.gray(`Tools available: ${mcp.listTools().join(', ')}`);
+        return;
+    }
+    log.blue('MCP Servers:');
+    const servers = mcp.listServers();
+    if (servers.length === 0) {
+        log.gray('  No servers configured');
+    }
+    else {
+        for (const server of servers) {
+            log.white(`  - ${server}`);
+        }
+    }
+    log.blue('\nAvailable Tools:');
+    const tools = mcp.listTools();
+    for (const tool of tools) {
+        log.white(`  - ${tool}`);
     }
 }
 //# sourceMappingURL=cli.js.map

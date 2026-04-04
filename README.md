@@ -1,147 +1,155 @@
 # Enterprise CLI
 
-An enterprise-grade AI coding assistant inspired by Claude Code architecture.
+An enterprise-grade AI coding assistant inspired by Claude Code architecture, with governance, session management, and MCP support.
 
 ## Features
 
-- **Multi-Provider LLM Support**: Anthropic Claude, OpenAI GPT, Ollama (local)
+- **Multi-Provider LLM Support**: Anthropic Claude, OpenAI, Ollama, Custom (SCNet, etc.)
 - **6 Core Tools**: Read, Edit, Write, Bash, Grep, Glob
 - **Permission Modes**: default (read-only), acceptEdits, plan, auto, bypassPermissions
-- **Context Management**: CLAUDE.md loading, context compaction
-- **Interactive CLI**: Commander.js based command interface
+- **Session Management**: Save/resume chat sessions
+- **Governance & Audit**: RBAC, tool approval, audit logs
+- **MCP Integration**: Connect to external MCP servers
+- **CLAUDE.md Support**: Project-specific instructions
 
 ## Architecture
 
-Based on deep research into Claude Code's architecture:
-
 ```
 ┌─────────────────────────────────────────────────────┐
-│  CLI Interface (Commander.js)                      │
+│  CLI Commands                                        │
+│  chat | run | sessions | governance | mcp            │
 ├─────────────────────────────────────────────────────┤
-│  Agent Orchestrator                                │
+│  Agent Orchestrator                                 │
 │  - Agent loop: prompt → model → tools → repeat     │
-│  - Context assembly                                │
+│  - Session management                                │
+│  - Context assembly                                  │
 ├─────────────────────────────────────────────────────┤
-│  Tools (Read, Edit, Write, Bash, Grep, Glob)       │
+│  Tools (Core + MCP)                                 │
+│  Read | Edit | Write | Bash | Grep | Glob | ...   │
 ├─────────────────────────────────────────────────────┤
-│  Permission Gate                                   │
-│  - default: read-only                              │
-│  - acceptEdits: read + edit                        │
-│  - plan: read + plan (no edits)                    │
-│  - auto: all actions + safety                      │
+│  Governance Layer                                    │
+│  - Permission Gate (modes)                          │
+│  - Audit Logging                                     │
+│  - Tool Approval                                     │
 ├─────────────────────────────────────────────────────┤
-│  LLM Provider Layer                                │
-│  - Anthropic, OpenAI, Ollama                       │
+│  LLM Provider Layer                                  │
+│  Anthropic | OpenAI | Ollama | Custom               │
 └─────────────────────────────────────────────────────┘
 ```
 
 ## Installation
 
 ```bash
-git clone <this-repo>
-cd enterprise-cli
+git clone https://github.com/yayalingo/enterprise-cli-v1.git
+cd enterprise-cli-v1
 npm install
 npm run build
 ```
 
-## Configuration
-
-### Environment Variables
+## Quick Start
 
 ```bash
-# For Anthropic (default)
-export ANTHROPIC_API_KEY=sk-ant-...
+# Interactive chat with SCNet
+npm start -- chat \
+  --provider custom \
+  --base-url https://api.scnet.cn/api/llm/v1 \
+  --api-key YOUR_KEY \
+  --model Qwen3-235B-A22B-Thinking-2507
 
-# For OpenAI
-export OPENAI_API_KEY=sk-...
-
-# For Ollama (local)
-# Just run `ollama serve` on port 11434
+# Single prompt
+npm start -- run "Write hello to /tmp/hello.py" --mode acceptEdits
 ```
 
-### Config File
+## Commands
 
-Create `.enterprise-cli.json` in your project:
-
-```json
-{
-  "defaultProvider": "anthropic",
-  "defaultModel": "claude-sonnet-4-20250514",
-  "defaultPermissionMode": "default"
-}
-```
-
-## Usage
-
-### Interactive Chat
+### chat
+Start interactive chat session.
 
 ```bash
-npm start -- chat
-# or
-npx ts-node src/index.ts chat
+npm start -- chat \
+  --provider custom \
+  --base-url https://api.scnet.cn/api/llm/v1 \
+  --api-key YOUR_KEY \
+  --model MODEL_NAME
 ```
 
-### Single Prompt
+### run
+Run single prompt and exit.
 
 ```bash
-npm start -- run "Explain what this project does"
+npm start -- run "Explain this code" --mode default
 ```
 
-### Options
+### sessions
+List saved sessions.
 
 ```bash
--m, --model <model>     Model to use
--p, --provider <provider>  Provider (anthropic|openai|ollama)
--c, --cwd <directory>   Working directory
---mode <mode>           Permission mode (default|acceptEdits|plan|auto)
+npm start -- sessions
 ```
+
+### governance
+Show tool approval status and audit logs.
+
+```bash
+npm start -- governance
+npm start -- governance --approve-tool Write
+```
+
+### mcp
+Manage MCP servers.
+
+```bash
+npm start -- mcp --add myserver https://mcp.example.com
+```
+
+## Options
+
+| Option | Description |
+|--------|-------------|
+| `-m, --model` | Model to use |
+| `-p, --provider` | Provider (anthropic/openai/ollama/custom) |
+| `--base-url` | Custom API base URL |
+| `--api-key` | API key |
+| `--mode` | Permission mode (default/acceptEdits/plan/auto) |
+| `-c, --cwd` | Working directory |
 
 ## Permission Modes
 
 | Mode | Read | Edit | Execute | Use Case |
 |------|------|------|---------|----------|
-| default | ✓ | ✗ | ✗ | Sensitive work, first use |
+| default | ✓ | ✗ | ✗ | Sensitive work |
 | acceptEdits | ✓ | ✓ | ✗ | Iterating on code |
-| plan | ✓ | ✗ | ✓ | Research and design |
+| plan | ✓ | ✗ | ✓ | Research |
 | auto | ✓ | ✓ | ✓ | Long-running tasks |
-| bypassPermissions | ✓ | ✓ | ✓ | Isolated containers only |
+| bypassPermissions | ✓ | ✓ | ✓ | Isolated containers |
 
 ## CLAUDE.md
 
-Enterprise CLI supports CLAUDE.md files for project-specific instructions:
+Enterprise CLI loads CLAUDE.md from:
 
-- `~/.claude/CLAUDE.md` - Global (all projects)
-- `./CLAUDE.md` - Project (shared)
-- `./CLAUDE.local.md` - Local (personal)
-- Parent directory CLAUDE.md files are also loaded
+- `~/.claude/CLAUDE.md` - Global
+- `./CLAUDE.md` - Project
+- `./CLAUDE.local.md` - Local
+- Parent directories
 
 ## Tools
 
-### Read
-Reads file contents. Supports limit and offset.
+| Tool | Description |
+|------|-------------|
+| Read | Read file contents |
+| Edit | Edit files (oldString/newString) |
+| Write | Create/overwrite files |
+| Bash | Execute shell commands |
+| Glob | File pattern matching |
+| Grep | Regex content search |
 
-### Edit
-Makes targeted edits to files using oldString/newString replacement.
+## Claude Code Patterns
 
-### Write
-Creates or overwrites files.
-
-### Bash
-Executes shell commands. Working directory persists, environment variables don't.
-
-### Glob
-Fast file pattern matching.
-
-### Grep
-Fast content search using regex.
-
-## Claude Code Patterns Implemented
-
-1. **CLAUDE.md in user messages**: Injected into user messages, not system prompt, every turn
-2. **Context refresh**: Re-sent every turn for 92% prompt caching
-3. **Tool definitions**: Sent to model with name, description, input_schema
-4. **Agent loop**: prompt → model → tool_calls → execute → repeat until end_turn
-5. **Permission modes**: Read-only by default, explicit permission for edits
+1. **CLAUDE.md in user messages** - Not system prompt
+2. **Context refresh** - Every turn for caching
+3. **Tool definitions** - Sent to model
+4. **Agent loop** - prompt → model → tools → end_turn
+5. **Permission modes** - Read-only by default
 
 ## License
 
