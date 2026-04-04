@@ -18,6 +18,7 @@ class AgentOrchestrator {
     sessionManager;
     memoryManager;
     costTracker;
+    auditLogger;
     iterationCount = 0;
     maxIterations;
     constructor(config) {
@@ -29,6 +30,7 @@ class AgentOrchestrator {
         this.sessionManager = new session_manager_1.SessionManager();
         this.memoryManager = new memory_1.MemoryManager(config.cwd);
         this.costTracker = new cost_tracker_1.CostTracker();
+        this.auditLogger = config.auditLogger;
     }
     async initialize() {
         await Promise.all([
@@ -150,7 +152,10 @@ class AgentOrchestrator {
                     continue;
                 }
                 try {
+                    const startTime = Date.now();
                     const result = await tool.execute(toolCall.input);
+                    const duration = Date.now() - startTime;
+                    this.auditLogger?.log('TOOL_EXECUTE', toolCall.name, toolCall.input, result.content, !result.is_error, duration);
                     this.messages.push({
                         role: 'tool',
                         tool_use_id: toolCall.id || '',
@@ -158,6 +163,7 @@ class AgentOrchestrator {
                     });
                 }
                 catch (error) {
+                    this.auditLogger?.log('TOOL_ERROR', toolCall.name, toolCall.input, error.message, false, 0);
                     this.messages.push({
                         role: 'tool',
                         tool_use_id: toolCall.id || '',
@@ -253,6 +259,12 @@ Available tools: Read, Edit, Write, Bash, Grep, Glob, WebFetch, WebSearch, Agent
     }
     getCostSummary() {
         return this.costTracker.getFormattedSummary();
+    }
+    getAuditLogger() {
+        return this.auditLogger;
+    }
+    async flushAudit() {
+        await this.auditLogger?.flush();
     }
 }
 exports.AgentOrchestrator = AgentOrchestrator;

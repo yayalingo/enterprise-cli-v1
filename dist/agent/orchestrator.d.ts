@@ -4,6 +4,7 @@ import { PermissionGate } from '../permissions/gate';
 import { SessionManager } from './session-manager';
 import { MemoryManager } from './memory';
 import { CostTracker } from './cost-tracker';
+import { AuditLogger } from './audit';
 export interface AgentConfig {
     provider: LLMInterface;
     toolRegistry: ToolRegistry;
@@ -12,6 +13,7 @@ export interface AgentConfig {
     maxIterations?: number;
     enableCompaction?: boolean;
     enableSessionPersistence?: boolean;
+    auditLogger?: AuditLogger;
 }
 export declare class AgentOrchestrator {
     private config;
@@ -24,6 +26,7 @@ export declare class AgentOrchestrator {
     private sessionManager;
     private memoryManager;
     private costTracker;
+    private auditLogger?;
     private iterationCount;
     private maxIterations;
     constructor(config: AgentConfig);
@@ -41,5 +44,7 @@ export declare class AgentOrchestrator {
     getMemoryManager(): MemoryManager;
     getCostTracker(): CostTracker;
     getCostSummary(): string;
+    getAuditLogger(): AuditLogger | undefined;
+    flushAudit(): Promise<void>;
 }
 //# sourceMappingURL=orchestrator.d.ts.map

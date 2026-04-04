@@ -82,8 +82,6 @@ program
     await manageMCP(options);
   });
 
-program.parse();
-
 const log = {
   blue: (s: string) => console.log('\x1b[36m' + s + '\x1b[0m'),
   gray: (s: string) => console.log('\x1b[90m' + s + '\x1b[0m'),
@@ -96,6 +94,8 @@ const log = {
 function join(...paths: string[]): string {
   return paths.join('/').replace(/\/+/g, '/');
 }
+
+program.parse();
 
 async function loadConfig() {
   const configPaths = [

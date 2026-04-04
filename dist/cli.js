@@ -104,7 +104,6 @@ program
     .action(async (options) => {
     await manageMCP(options);
 });
-program.parse();
 const log = {
     blue: (s) => console.log('\x1b[36m' + s + '\x1b[0m'),
     gray: (s) => console.log('\x1b[90m' + s + '\x1b[0m'),
@@ -116,6 +115,7 @@ const log = {
 function join(...paths) {
     return paths.join('/').replace(/\/+/g, '/');
 }
+program.parse();
 async function loadConfig() {
     const configPaths = [
         join(process.env.HOME || '', '.enterprise-cli', 'config.json'),

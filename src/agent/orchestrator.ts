@@ -7,6 +7,7 @@ import { ContextCompactor } from './compactor';
 import { SessionManager } from './session-manager';
 import { MemoryManager } from './memory';
 import { CostTracker } from './cost-tracker';
+import { AuditLogger } from './audit';
 
 export interface AgentConfig {
   provider: LLMInterface;
@@ -16,6 +17,7 @@ export interface AgentConfig {
   maxIterations?: number;
   enableCompaction?: boolean;
   enableSessionPersistence?: boolean;
+  auditLogger?: AuditLogger;
 }
 
 export class AgentOrchestrator {
@@ -29,6 +31,7 @@ export class AgentOrchestrator {
   private sessionManager: SessionManager;
   private memoryManager: MemoryManager;
   private costTracker: CostTracker;
+  private auditLogger?: AuditLogger;
   private iterationCount = 0;
   private maxIterations: number;
 
@@ -41,6 +44,7 @@ export class AgentOrchestrator {
     this.sessionManager = new SessionManager();
     this.memoryManager = new MemoryManager(config.cwd);
     this.costTracker = new CostTracker();
+    this.auditLogger = config.auditLogger;
   }
 
   async initialize(): Promise<void> {
@@ -184,13 +188,34 @@ export class AgentOrchestrator {
         }
 
         try {
+          const startTime = Date.now();
           const result = await tool.execute(toolCall.input);
+          const duration = Date.now() - startTime;
+
+          this.auditLogger?.log(
+            'TOOL_EXECUTE',
+            toolCall.name,
+            toolCall.input,
+            result.content,
+            !result.is_error,
+            duration
+          );
+
           this.messages.push({
             role: 'tool',
             tool_use_id: toolCall.id || '',
             content: result.content,
           });
         } catch (error: any) {
+          this.auditLogger?.log(
+            'TOOL_ERROR',
+            toolCall.name,
+            toolCall.input,
+            error.message,
+            false,
+            0
+          );
+
           this.messages.push({
             role: 'tool',
             tool_use_id: toolCall.id || '',
@@ -308,5 +333,13 @@ Available tools: Read, Edit, Write, Bash, Grep, Glob, WebFetch, WebSearch, Agent
 
   getCostSummary(): string {
     return this.costTracker.getFormattedSummary();
+  }
+
+  getAuditLogger(): AuditLogger | undefined {
+    return this.auditLogger;
+  }
+
+  async flushAudit(): Promise<void> {
+    await this.auditLogger?.flush();
   }
 }
