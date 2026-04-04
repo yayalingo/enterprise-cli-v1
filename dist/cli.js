@@ -53,6 +53,12 @@ program
     .option('--mode <mode>', 'Permission mode (default|acceptEdits|plan|auto)')
     .option('-c, --cwd <directory>', 'Working directory', process.cwd());
 program
+    .command('skills')
+    .description('List available skills')
+    .action(async () => {
+    await listSkills();
+});
+program
     .command('chat')
     .description('Start an interactive chat session')
     .option('-s, --session <id>', 'Resume session by ID')
@@ -338,5 +344,26 @@ async function manageMCP(options) {
     for (const tool of tools) {
         log.white(`  - ${tool}`);
     }
+}
+async function listSkills() {
+    const { SkillLoader } = await Promise.resolve().then(() => __importStar(require('./agent/skills')));
+    const loader = new SkillLoader();
+    await loader.load();
+    const cwd = process.cwd();
+    loader.loadProjectSkills(cwd);
+    const skills = loader.getSkillList();
+    if (skills.length === 0) {
+        log.gray('No skills found');
+        log.gray('Create skills in:');
+        log.gray('  - ~/.claude/skills/<skill-name>/SKILL.md');
+        log.gray('  - .claude/skills/<skill-name>/SKILL.md');
+        return;
+    }
+    log.blue('Available Skills:');
+    for (const skill of skills) {
+        log.white(`  - ${skill.name}: ${skill.description}`);
+    }
+    log.gray('\nTo use a skill, just mention it in your prompt.');
+    log.gray('Example: "Use the pdf skill to extract text from document.pdf"');
 }
 //# sourceMappingURL=cli.js.map

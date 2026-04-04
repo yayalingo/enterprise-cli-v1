@@ -2,22 +2,27 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AgentOrchestrator = void 0;
 const context_1 = require("./context");
+const skills_1 = require("./skills");
 class AgentOrchestrator {
     config;
     messages = [];
     claudeMdEntries = [];
     sessionContext;
     contextAssembler;
+    skillLoader;
     iterationCount = 0;
     maxIterations;
     constructor(config) {
         this.config = config;
         this.maxIterations = config.maxIterations || 100;
         this.contextAssembler = new context_1.ContextAssembler(config.cwd);
+        this.skillLoader = new skills_1.SkillLoader();
     }
     async initialize() {
         this.sessionContext = this.contextAssembler.getSessionContext();
         this.claudeMdEntries = await this.contextAssembler.loadClaudeMdFiles();
+        await this.skillLoader.load();
+        this.skillLoader.loadProjectSkills(this.config.cwd);
         const systemPrompt = this.buildSystemPrompt();
         this.messages.push({
             role: 'system',
@@ -129,11 +134,14 @@ class AgentOrchestrator {
         return 'Max iterations reached';
     }
     buildSystemPrompt() {
-        return `You are an agent for Enterprise CLI, an AI coding assistant. Given the user\'s prompt, use the tools available to you to answer the user\'s question.
+        const skillsSection = this.skillLoader.getSkillSummary();
+        return `You are an agent for Enterprise CLI, an AI coding assistant. Given the user's prompt, use the tools available to you to answer the user's question.
 
-Be concise, direct, and to the point. Answer the user\'s question directly, without elaboration or unnecessary details.
+Be concise, direct, and to the point. Answer the user's question directly, without elaboration or unnecessary details.
 
-When relevant, share file names and code snippets.`;
+When relevant, share file names and code snippets.
+
+Available tools: Read, Edit, Write, Bash, Grep, Glob${skillsSection}`;
     }
     buildUserMessage(userInput) {
         const parts = [];
@@ -143,11 +151,37 @@ When relevant, share file names and code snippets.`;
             const claudeMdMsg = this.contextAssembler.formatClaudeMdMessage(this.claudeMdEntries);
             parts.push({ type: 'text', text: claudeMdMsg });
         }
+        const skillInvocation = this.detectSkillInvocation(userInput);
+        if (skillInvocation) {
+            const invokeMsg = `\n\n<skill_invoked>\nSkill: ${skillInvocation.name}\nBase Path: ${skillInvocation.basePath}\n\n${skillInvocation.content}\n</skill_invoked>`;
+            parts.push({ type: 'text', text: invokeMsg });
+        }
         parts.push({ type: 'text', text: `\n\nUser: ${userInput}` });
         return {
             role: 'user',
             content: parts,
         };
+    }
+    detectSkillInvocation(input) {
+        const lower = input.toLowerCase();
+        const skills = this.skillLoader.getSkillList();
+        for (const skill of skills) {
+            const patterns = [
+                `use the ${skill.name} skill`,
+                `use ${skill.name} skill`,
+                `using the ${skill.name}`,
+                `use ${skill.name}`,
+                `${skill.name} skill`,
+            ];
+            for (const pattern of patterns) {
+                if (lower.includes(pattern)) {
+                    const invocation = this.skillLoader.invoke(skill.name);
+                    if (invocation)
+                        return invocation;
+                }
+            }
+        }
+        return null;
     }
     getToolDefinitions() {
         return this.config.toolRegistry.getAll();

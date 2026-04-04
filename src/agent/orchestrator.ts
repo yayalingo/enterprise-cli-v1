@@ -2,6 +2,7 @@ import type { Message, LLMInterface, ToolDefinition, ToolCall, ToolResult, Permi
 import { ToolRegistry } from '../tools';
 import { PermissionGate } from '../permissions/gate';
 import { ContextAssembler } from './context';
+import { SkillLoader } from './skills';
 
 export interface AgentConfig {
   provider: LLMInterface;
@@ -17,6 +18,7 @@ export class AgentOrchestrator {
   private claudeMdEntries: ClaudeMdEntry[] = [];
   private sessionContext!: SessionContext;
   private contextAssembler: ContextAssembler;
+  private skillLoader: SkillLoader;
   private iterationCount = 0;
   private maxIterations: number;
 
@@ -24,11 +26,15 @@ export class AgentOrchestrator {
     this.config = config;
     this.maxIterations = config.maxIterations || 100;
     this.contextAssembler = new ContextAssembler(config.cwd);
+    this.skillLoader = new SkillLoader();
   }
 
   async initialize(): Promise<void> {
     this.sessionContext = this.contextAssembler.getSessionContext();
     this.claudeMdEntries = await this.contextAssembler.loadClaudeMdFiles();
+
+    await this.skillLoader.load();
+    this.skillLoader.loadProjectSkills(this.config.cwd);
 
     const systemPrompt = this.buildSystemPrompt();
     this.messages.push({
@@ -157,11 +163,15 @@ export class AgentOrchestrator {
   }
 
   private buildSystemPrompt(): string {
-    return `You are an agent for Enterprise CLI, an AI coding assistant. Given the user\'s prompt, use the tools available to you to answer the user\'s question.
+    const skillsSection = this.skillLoader.getSkillSummary();
+    
+    return `You are an agent for Enterprise CLI, an AI coding assistant. Given the user's prompt, use the tools available to you to answer the user's question.
 
-Be concise, direct, and to the point. Answer the user\'s question directly, without elaboration or unnecessary details.
+Be concise, direct, and to the point. Answer the user's question directly, without elaboration or unnecessary details.
 
-When relevant, share file names and code snippets.`;
+When relevant, share file names and code snippets.
+
+Available tools: Read, Edit, Write, Bash, Grep, Glob${skillsSection}`;
   }
 
   private buildUserMessage(userInput: string): Message {
@@ -175,12 +185,41 @@ When relevant, share file names and code snippets.`;
       parts.push({ type: 'text', text: claudeMdMsg });
     }
 
+    const skillInvocation = this.detectSkillInvocation(userInput);
+    if (skillInvocation) {
+      const invokeMsg = `\n\n<skill_invoked>\nSkill: ${skillInvocation.name}\nBase Path: ${skillInvocation.basePath}\n\n${skillInvocation.content}\n</skill_invoked>`;
+      parts.push({ type: 'text', text: invokeMsg });
+    }
+
     parts.push({ type: 'text', text: `\n\nUser: ${userInput}` });
 
     return {
       role: 'user',
       content: parts,
     };
+  }
+
+  private detectSkillInvocation(input: string): { name: string; basePath: string; content: string } | null {
+    const lower = input.toLowerCase();
+    const skills = this.skillLoader.getSkillList();
+
+    for (const skill of skills) {
+      const patterns = [
+        `use the ${skill.name} skill`,
+        `use ${skill.name} skill`,
+        `using the ${skill.name}`,
+        `use ${skill.name}`,
+        `${skill.name} skill`,
+      ];
+
+      for (const pattern of patterns) {
+        if (lower.includes(pattern)) {
+          const invocation = this.skillLoader.invoke(skill.name);
+          if (invocation) return invocation;
+        }
+      }
+    }
+    return null;
   }
 
   getToolDefinitions(): ToolDefinition[] {

@@ -14,6 +14,7 @@ export declare class AgentOrchestrator {
     private claudeMdEntries;
     private sessionContext;
     private contextAssembler;
+    private skillLoader;
     private iterationCount;
     private maxIterations;
     constructor(config: AgentConfig);
@@ -21,6 +22,7 @@ export declare class AgentOrchestrator {
     chat(userInput: string): Promise<string>;
     private buildSystemPrompt;
     private buildUserMessage;
+    private detectSkillInvocation;
     getToolDefinitions(): ToolDefinition[];
     setPermissionMode(mode: PermissionMode): void;
     getMessages(): Message[];
