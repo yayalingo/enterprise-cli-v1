@@ -3,6 +3,10 @@ import { ToolRegistry } from '../tools';
 import { PermissionGate } from '../permissions/gate';
 import { ContextAssembler } from './context';
 import { SkillLoader } from './skills';
+import { ContextCompactor } from './compactor';
+import { SessionManager } from './session-manager';
+import { MemoryManager } from './memory';
+import { CostTracker } from './cost-tracker';
 
 export interface AgentConfig {
   provider: LLMInterface;
@@ -10,6 +14,8 @@ export interface AgentConfig {
   permissionGate: PermissionGate;
   cwd: string;
   maxIterations?: number;
+  enableCompaction?: boolean;
+  enableSessionPersistence?: boolean;
 }
 
 export class AgentOrchestrator {
@@ -19,6 +25,10 @@ export class AgentOrchestrator {
   private sessionContext!: SessionContext;
   private contextAssembler: ContextAssembler;
   private skillLoader: SkillLoader;
+  private compactor: ContextCompactor;
+  private sessionManager: SessionManager;
+  private memoryManager: MemoryManager;
+  private costTracker: CostTracker;
   private iterationCount = 0;
   private maxIterations: number;
 
@@ -27,14 +37,31 @@ export class AgentOrchestrator {
     this.maxIterations = config.maxIterations || 100;
     this.contextAssembler = new ContextAssembler(config.cwd);
     this.skillLoader = new SkillLoader();
+    this.compactor = new ContextCompactor();
+    this.sessionManager = new SessionManager();
+    this.memoryManager = new MemoryManager(config.cwd);
+    this.costTracker = new CostTracker();
   }
 
   async initialize(): Promise<void> {
-    this.sessionContext = this.contextAssembler.getSessionContext();
-    this.claudeMdEntries = await this.contextAssembler.loadClaudeMdFiles();
-
-    await this.skillLoader.load();
-    this.skillLoader.loadProjectSkills(this.config.cwd);
+    await Promise.all([
+      (async () => {
+        this.sessionContext = this.contextAssembler.getSessionContext();
+      })(),
+      (async () => {
+        this.claudeMdEntries = await this.contextAssembler.loadClaudeMdFiles();
+      })(),
+      (async () => {
+        await this.skillLoader.load();
+        this.skillLoader.loadProjectSkills(this.config.cwd);
+      })(),
+      (async () => {
+        await this.sessionManager.initialize();
+      })(),
+      (async () => {
+        await this.memoryManager.initialize();
+      })(),
+    ]);
 
     const systemPrompt = this.buildSystemPrompt();
     this.messages.push({
@@ -47,10 +74,22 @@ export class AgentOrchestrator {
     const userMessage = this.buildUserMessage(userInput);
     this.messages.push(userMessage);
 
+    if (this.config.enableSessionPersistence) {
+      this.sessionManager.addMessage(userMessage);
+    }
+
     while (this.iterationCount < this.maxIterations) {
       this.iterationCount++;
 
       const response = await this.config.provider.chat(this.messages);
+
+      if (response.usage) {
+        this.costTracker.track(
+          (response as any).model || 'default',
+          response.usage.input_tokens,
+          response.usage.output_tokens
+        );
+      }
 
       const responseContent = response.content;
 
@@ -61,6 +100,9 @@ export class AgentOrchestrator {
         });
 
         if (response.stop_reason === 'end_turn') {
+          if (this.config.enableSessionPersistence) {
+            await this.sessionManager.save();
+          }
           return responseContent;
         }
         continue;
@@ -99,6 +141,9 @@ export class AgentOrchestrator {
       if (toolCalls.length === 0) {
         this.messages.push(assistantMessage);
         if (response.stop_reason === 'end_turn') {
+          if (this.config.enableSessionPersistence) {
+            await this.sessionManager.save();
+          }
           return textContent || '';
         }
         continue;
@@ -154,7 +199,14 @@ export class AgentOrchestrator {
         }
       }
 
+      if (this.config.enableCompaction && this.iterationCount % 10 === 0) {
+        this.messages = await this.compactor.compact(this.messages, this.config.provider);
+      }
+
       if (response.stop_reason === 'end_turn' && toolCalls.length === 0) {
+        if (this.config.enableSessionPersistence) {
+          await this.sessionManager.save();
+        }
         return textContent || '';
       }
     }
@@ -171,7 +223,7 @@ Be concise, direct, and to the point. Answer the user's question directly, witho
 
 When relevant, share file names and code snippets.
 
-Available tools: Read, Edit, Write, Bash, Grep, Glob${skillsSection}`;
+Available tools: Read, Edit, Write, Bash, Grep, Glob, WebFetch, WebSearch, Agent, Task${skillsSection}`;
   }
 
   private buildUserMessage(userInput: string): Message {
@@ -240,5 +292,21 @@ Available tools: Read, Edit, Write, Bash, Grep, Glob${skillsSection}`;
 
   getWorkingDirectory(): string {
     return this.config.cwd;
+  }
+
+  getSessionManager(): SessionManager {
+    return this.sessionManager;
+  }
+
+  getMemoryManager(): MemoryManager {
+    return this.memoryManager;
+  }
+
+  getCostTracker(): CostTracker {
+    return this.costTracker;
+  }
+
+  getCostSummary(): string {
+    return this.costTracker.getFormattedSummary();
   }
 }

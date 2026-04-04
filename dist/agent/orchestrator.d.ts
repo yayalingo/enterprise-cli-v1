@@ -1,12 +1,17 @@
 import type { Message, LLMInterface, ToolDefinition, PermissionMode } from './types';
 import { ToolRegistry } from '../tools';
 import { PermissionGate } from '../permissions/gate';
+import { SessionManager } from './session-manager';
+import { MemoryManager } from './memory';
+import { CostTracker } from './cost-tracker';
 export interface AgentConfig {
     provider: LLMInterface;
     toolRegistry: ToolRegistry;
     permissionGate: PermissionGate;
     cwd: string;
     maxIterations?: number;
+    enableCompaction?: boolean;
+    enableSessionPersistence?: boolean;
 }
 export declare class AgentOrchestrator {
     private config;
@@ -15,6 +20,10 @@ export declare class AgentOrchestrator {
     private sessionContext;
     private contextAssembler;
     private skillLoader;
+    private compactor;
+    private sessionManager;
+    private memoryManager;
+    private costTracker;
     private iterationCount;
     private maxIterations;
     constructor(config: AgentConfig);
@@ -28,5 +37,9 @@ export declare class AgentOrchestrator {
     getPermissionMode(): PermissionMode;
     getMessages(): Message[];
     getWorkingDirectory(): string;
+    getSessionManager(): SessionManager;
+    getMemoryManager(): MemoryManager;
+    getCostTracker(): CostTracker;
+    getCostSummary(): string;
 }
 //# sourceMappingURL=orchestrator.d.ts.map

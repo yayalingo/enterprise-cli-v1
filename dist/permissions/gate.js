@@ -1,6 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PermissionGate = void 0;
+const os_1 = require("os");
+const path_1 = require("path");
 const PERMISSION_MODES = {
     default: { read: true, write: false, execute: false },
     acceptEdits: { read: true, write: true, execute: false },
@@ -8,16 +10,54 @@ const PERMISSION_MODES = {
     auto: { read: true, write: true, execute: true },
     bypassPermissions: { read: true, write: true, execute: true },
 };
+const DEFAULT_PROTECTED_PATHS = [
+    '~/.ssh',
+    '~/.git-credentials',
+    '~/.aws',
+    '~/.kube',
+    '~/.gnupg',
+    '/etc/passwd',
+    '/etc/shadow',
+    '/etc/sudoers',
+    '/etc/group',
+    '/etc/hosts',
+    '/etc/hostname',
+];
 class PermissionGate {
     config;
-    constructor(config) {
+    protectedPaths;
+    constructor(config, protectedPaths) {
         this.config = config;
+        this.protectedPaths = protectedPaths || DEFAULT_PROTECTED_PATHS;
     }
     setMode(mode) {
         this.config.mode = mode;
     }
     getMode() {
         return this.config.mode;
+    }
+    canAccessPath(path) {
+        if (this.config.mode === 'bypassPermissions') {
+            return { allowed: true };
+        }
+        const resolved = (0, path_1.resolve)(path.replace('~', (0, os_1.homedir)()));
+        const homeDir = (0, os_1.homedir)();
+        for (const protectedPath of this.protectedPaths) {
+            const expanded = (0, path_1.resolve)(protectedPath.replace('~', (0, os_1.homedir)()));
+            if (resolved.startsWith(expanded) || resolved === expanded) {
+                return {
+                    allowed: false,
+                    reason: `Path ${path} is protected`,
+                };
+            }
+        }
+        if (resolved === homeDir || resolved === (0, path_1.dirname)(homeDir)) {
+            return {
+                allowed: false,
+                reason: `Access to home directory is restricted`,
+            };
+        }
+        return { allowed: true };
     }
     canUseTool(toolName) {
         const mode = this.config.mode;

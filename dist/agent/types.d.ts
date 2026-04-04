@@ -30,9 +30,12 @@ export interface ToolInputSchema {
     required?: string[];
 }
 export interface SchemaProperty {
-    type: 'string' | 'number' | 'boolean';
+    type: 'string' | 'number' | 'boolean' | 'array' | 'object';
     description?: string;
     enum?: string[];
+    items?: SchemaProperty;
+    properties?: Record<string, SchemaProperty>;
+    default?: string | number | boolean;
 }
 export interface ToolCall {
     id: string;

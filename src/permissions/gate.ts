@@ -1,3 +1,5 @@
+import { homedir } from 'os';
+import { dirname, resolve } from 'path';
 import type { PermissionMode, PermissionConfig, PermissionRule } from '../agent/types';
 
 const PERMISSION_MODES: Record<PermissionMode, { read: boolean; write: boolean; execute: boolean }> = {
@@ -8,11 +10,27 @@ const PERMISSION_MODES: Record<PermissionMode, { read: boolean; write: boolean; 
   bypassPermissions: { read: true, write: true, execute: true },
 };
 
+const DEFAULT_PROTECTED_PATHS = [
+  '~/.ssh',
+  '~/.git-credentials',
+  '~/.aws',
+  '~/.kube',
+  '~/.gnupg',
+  '/etc/passwd',
+  '/etc/shadow',
+  '/etc/sudoers',
+  '/etc/group',
+  '/etc/hosts',
+  '/etc/hostname',
+];
+
 export class PermissionGate {
   private config: PermissionConfig;
+  private protectedPaths: string[];
 
-  constructor(config: PermissionConfig) {
+  constructor(config: PermissionConfig, protectedPaths?: string[]) {
     this.config = config;
+    this.protectedPaths = protectedPaths || DEFAULT_PROTECTED_PATHS;
   }
 
   setMode(mode: PermissionMode): void {
@@ -21,6 +39,34 @@ export class PermissionGate {
 
   getMode(): PermissionMode {
     return this.config.mode;
+  }
+
+  canAccessPath(path: string): { allowed: boolean; reason?: string } {
+    if (this.config.mode === 'bypassPermissions') {
+      return { allowed: true };
+    }
+
+    const resolved = resolve(path.replace('~', homedir()));
+    const homeDir = homedir();
+
+    for (const protectedPath of this.protectedPaths) {
+      const expanded = resolve(protectedPath.replace('~', homedir()));
+      if (resolved.startsWith(expanded) || resolved === expanded) {
+        return {
+          allowed: false,
+          reason: `Path ${path} is protected`,
+        };
+      }
+    }
+
+    if (resolved === homeDir || resolved === dirname(homeDir)) {
+      return {
+        allowed: false,
+        reason: `Access to home directory is restricted`,
+      };
+    }
+
+    return { allowed: true };
   }
 
   canUseTool(toolName: string): { allowed: boolean; reason?: string } {

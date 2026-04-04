@@ -3,6 +3,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AgentOrchestrator = void 0;
 const context_1 = require("./context");
 const skills_1 = require("./skills");
+const compactor_1 = require("./compactor");
+const session_manager_1 = require("./session-manager");
+const memory_1 = require("./memory");
+const cost_tracker_1 = require("./cost-tracker");
 class AgentOrchestrator {
     config;
     messages = [];
@@ -10,6 +14,10 @@ class AgentOrchestrator {
     sessionContext;
     contextAssembler;
     skillLoader;
+    compactor;
+    sessionManager;
+    memoryManager;
+    costTracker;
     iterationCount = 0;
     maxIterations;
     constructor(config) {
@@ -17,12 +25,30 @@ class AgentOrchestrator {
         this.maxIterations = config.maxIterations || 100;
         this.contextAssembler = new context_1.ContextAssembler(config.cwd);
         this.skillLoader = new skills_1.SkillLoader();
+        this.compactor = new compactor_1.ContextCompactor();
+        this.sessionManager = new session_manager_1.SessionManager();
+        this.memoryManager = new memory_1.MemoryManager(config.cwd);
+        this.costTracker = new cost_tracker_1.CostTracker();
     }
     async initialize() {
-        this.sessionContext = this.contextAssembler.getSessionContext();
-        this.claudeMdEntries = await this.contextAssembler.loadClaudeMdFiles();
-        await this.skillLoader.load();
-        this.skillLoader.loadProjectSkills(this.config.cwd);
+        await Promise.all([
+            (async () => {
+                this.sessionContext = this.contextAssembler.getSessionContext();
+            })(),
+            (async () => {
+                this.claudeMdEntries = await this.contextAssembler.loadClaudeMdFiles();
+            })(),
+            (async () => {
+                await this.skillLoader.load();
+                this.skillLoader.loadProjectSkills(this.config.cwd);
+            })(),
+            (async () => {
+                await this.sessionManager.initialize();
+            })(),
+            (async () => {
+                await this.memoryManager.initialize();
+            })(),
+        ]);
         const systemPrompt = this.buildSystemPrompt();
         this.messages.push({
             role: 'system',
@@ -32,9 +58,15 @@ class AgentOrchestrator {
     async chat(userInput) {
         const userMessage = this.buildUserMessage(userInput);
         this.messages.push(userMessage);
+        if (this.config.enableSessionPersistence) {
+            this.sessionManager.addMessage(userMessage);
+        }
         while (this.iterationCount < this.maxIterations) {
             this.iterationCount++;
             const response = await this.config.provider.chat(this.messages);
+            if (response.usage) {
+                this.costTracker.track(response.model || 'default', response.usage.input_tokens, response.usage.output_tokens);
+            }
             const responseContent = response.content;
             if (typeof responseContent === 'string') {
                 this.messages.push({
@@ -42,6 +74,9 @@ class AgentOrchestrator {
                     content: responseContent,
                 });
                 if (response.stop_reason === 'end_turn') {
+                    if (this.config.enableSessionPersistence) {
+                        await this.sessionManager.save();
+                    }
                     return responseContent;
                 }
                 continue;
@@ -77,6 +112,9 @@ class AgentOrchestrator {
             if (toolCalls.length === 0) {
                 this.messages.push(assistantMessage);
                 if (response.stop_reason === 'end_turn') {
+                    if (this.config.enableSessionPersistence) {
+                        await this.sessionManager.save();
+                    }
                     return textContent || '';
                 }
                 continue;
@@ -127,7 +165,13 @@ class AgentOrchestrator {
                     });
                 }
             }
+            if (this.config.enableCompaction && this.iterationCount % 10 === 0) {
+                this.messages = await this.compactor.compact(this.messages, this.config.provider);
+            }
             if (response.stop_reason === 'end_turn' && toolCalls.length === 0) {
+                if (this.config.enableSessionPersistence) {
+                    await this.sessionManager.save();
+                }
                 return textContent || '';
             }
         }
@@ -141,7 +185,7 @@ Be concise, direct, and to the point. Answer the user's question directly, witho
 
 When relevant, share file names and code snippets.
 
-Available tools: Read, Edit, Write, Bash, Grep, Glob${skillsSection}`;
+Available tools: Read, Edit, Write, Bash, Grep, Glob, WebFetch, WebSearch, Agent, Task${skillsSection}`;
     }
     buildUserMessage(userInput) {
         const parts = [];
@@ -197,6 +241,18 @@ Available tools: Read, Edit, Write, Bash, Grep, Glob${skillsSection}`;
     }
     getWorkingDirectory() {
         return this.config.cwd;
+    }
+    getSessionManager() {
+        return this.sessionManager;
+    }
+    getMemoryManager() {
+        return this.memoryManager;
+    }
+    getCostTracker() {
+        return this.costTracker;
+    }
+    getCostSummary() {
+        return this.costTracker.getFormattedSummary();
     }
 }
 exports.AgentOrchestrator = AgentOrchestrator;

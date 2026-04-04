@@ -2,6 +2,9 @@ import type { ToolDefinition, ToolResult } from '../agent/types';
 import { ReadTool, GlobTool, GrepTool } from './file';
 import { EditTool, WriteTool } from './edit';
 import { BashTool } from './bash';
+import { WebFetchTool, WebSearchTool } from './web';
+import { AgentTool, ExitWorktreeTool } from './subagent';
+import { TaskTool } from './task';
 
 export type ToolExecutor = {
   definition: ToolDefinition;
@@ -11,9 +14,11 @@ export type ToolExecutor = {
 export class ToolRegistry {
   private tools: Map<string, ToolExecutor> = new Map();
   private bashTool: BashTool;
+  private agentTool: AgentTool;
 
   constructor(cwd: string) {
     this.bashTool = new BashTool(cwd);
+    this.agentTool = new AgentTool(cwd);
 
     this.register(new ReadTool(cwd));
     this.register(new GlobTool(cwd));
@@ -21,6 +26,11 @@ export class ToolRegistry {
     this.register(new EditTool(cwd));
     this.register(new WriteTool(cwd));
     this.register(this.bashTool);
+    this.register(new WebFetchTool(cwd));
+    this.register(new WebSearchTool(cwd));
+    this.register(this.agentTool);
+    this.register(new ExitWorktreeTool(cwd, this.agentTool));
+    this.register(new TaskTool(cwd));
   }
 
   private register(tool: ToolExecutor): void {
@@ -53,6 +63,10 @@ export class ToolRegistry {
   getBashTool(): BashTool {
     return this.bashTool;
   }
+
+  getAgentTool(): AgentTool {
+    return this.agentTool;
+  }
 }
 
-export { ReadTool, GlobTool, GrepTool, EditTool, WriteTool, BashTool };
+export { ReadTool, GlobTool, GrepTool, EditTool, WriteTool, BashTool, WebFetchTool, WebSearchTool, AgentTool, TaskTool };

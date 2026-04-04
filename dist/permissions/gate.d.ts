@@ -1,9 +1,14 @@
 import type { PermissionMode, PermissionConfig } from '../agent/types';
 export declare class PermissionGate {
     private config;
-    constructor(config: PermissionConfig);
+    private protectedPaths;
+    constructor(config: PermissionConfig, protectedPaths?: string[]);
     setMode(mode: PermissionMode): void;
     getMode(): PermissionMode;
+    canAccessPath(path: string): {
+        allowed: boolean;
+        reason?: string;
+    };
     canUseTool(toolName: string): {
         allowed: boolean;
         reason?: string;
