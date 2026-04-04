@@ -36,10 +36,19 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const commander_1 = require("commander");
 const fs_1 = require("fs");
 const promises_1 = require("fs/promises");
+const path_1 = require("path");
 const orchestrator_1 = require("./agent/orchestrator");
 const tools_1 = require("./tools");
 const gate_1 = require("./permissions/gate");
 const llm_1 = require("./providers/llm");
+const log = {
+    blue: (s) => console.log('\x1b[36m' + s + '\x1b[0m'),
+    gray: (s) => console.log('\x1b[90m' + s + '\x1b[0m'),
+    green: (s) => console.log('\x1b[32m' + s + '\x1b[0m'),
+    red: (s) => console.log('\x1b[31m' + s + '\x1b[0m'),
+    white: (s) => console.log(s),
+    yellow: (s) => console.log('\x1b[33m' + s + '\x1b[0m'),
+};
 const program = new commander_1.Command();
 program
     .name('enterprise')
@@ -104,22 +113,32 @@ program
     .action(async (options) => {
     await manageMCP(options);
 });
-const log = {
-    blue: (s) => console.log('\x1b[36m' + s + '\x1b[0m'),
-    gray: (s) => console.log('\x1b[90m' + s + '\x1b[0m'),
-    green: (s) => console.log('\x1b[32m' + s + '\x1b[0m'),
-    red: (s) => console.log('\x1b[31m' + s + '\x1b[0m'),
-    white: (s) => console.log(s),
-    yellow: (s) => console.log('\x1b[33m' + s + '\x1b[0m'),
-};
-function join(...paths) {
-    return paths.join('/').replace(/\/+/g, '/');
-}
+program
+    .command('workflow')
+    .description('Manage workflows')
+    .option('--design <description>', 'Design workflow from description')
+    .option('--list', 'List workflows')
+    .option('--run <id>', 'Run workflow by ID')
+    .option('--docs <path>', 'Ingest documents for context')
+    .action(async (options) => {
+    if (options.design) {
+        await designWorkflow(options.design);
+    }
+    else if (options.list) {
+        await listWorkflows();
+    }
+    else if (options.run) {
+        await runWorkflow(options.run);
+    }
+    else if (options.docs) {
+        await ingestDocs(options.docs);
+    }
+});
 program.parse();
 async function loadConfig() {
     const configPaths = [
-        join(process.env.HOME || '', '.enterprise-cli', 'config.json'),
-        join(process.cwd(), '.enterprise-cli.json'),
+        (0, path_1.join)(process.env.HOME || '', '.enterprise-cli', 'config.json'),
+        (0, path_1.join)(process.cwd(), '.enterprise-cli.json'),
     ];
     for (const path of configPaths) {
         if ((0, fs_1.existsSync)(path)) {
@@ -412,5 +431,84 @@ async function startWeb(options) {
         port,
     });
     web.start(port);
+}
+async function designWorkflow(description) {
+    log.blue('Designing workflow...');
+    log.gray(`Description: ${description}\n`);
+    const { workflowDesigner } = await Promise.resolve().then(() => __importStar(require('./workflow')));
+    const result = await workflowDesigner.design({ description });
+    log.green(`✓ Created workflow: ${result.workflow.name}`);
+    log.gray(`  Nodes: ${result.workflow.nodes.length}`);
+    log.gray(`  Confidence: ${Math.round(result.confidence * 100)}%`);
+    if (result.suggestions.length > 0) {
+        log.yellow('\nSuggestions:');
+        result.suggestions.forEach(s => log.gray(`  - ${s}`));
+    }
+    if (result.missingNodes.length > 0) {
+        log.red('\nUnknown steps:');
+        result.missingNodes.forEach(n => log.gray(`  - ${n}`));
+    }
+    await (async () => {
+        const path = (0, path_1.join)(process.env.HOME || '', '.enterprise-cli', 'workflows', `${result.workflow.id}.json`);
+        if (!(0, fs_1.existsSync)((0, path_1.join)(process.env.HOME || '', '.enterprise-cli', 'workflows'))) {
+            (0, fs_1.mkdirSync)((0, path_1.join)(process.env.HOME || '', '.enterprise-cli', 'workflows'), { recursive: true });
+        }
+        await (0, promises_1.writeFile)(path, JSON.stringify(result.workflow, null, 2));
+        log.green(`\nSaved to: ${path}`);
+    })();
+}
+async function listWorkflows() {
+    const workflowsDir = (0, path_1.join)(process.env.HOME || '', '.enterprise-cli', 'workflows');
+    if (!(0, fs_1.existsSync)(workflowsDir)) {
+        log.yellow('No workflows found');
+        return;
+    }
+    const files = await Promise.resolve().then(() => __importStar(require('fs'))).then(fs => fs.promises.readdir(workflowsDir));
+    const workflows = files.filter(f => f.endsWith('.json'));
+    if (workflows.length === 0) {
+        log.yellow('No workflows found');
+        return;
+    }
+    log.blue(`Found ${workflows.length} workflow(s):\n`);
+    for (const file of workflows) {
+        const content = await (0, promises_1.readFile)((0, path_1.join)(workflowsDir, file), 'utf-8');
+        const wf = JSON.parse(content);
+        log.white(`  ${wf.id}: ${wf.name} (${wf.nodes.length} nodes)`);
+    }
+}
+async function runWorkflow(id) {
+    log.blue(`Running workflow: ${id}...`);
+    const path = (0, path_1.join)(process.env.HOME || '', '.enterprise-cli', 'workflows', `${id}.json`);
+    if (!(0, fs_1.existsSync)(path)) {
+        log.red(`Workflow ${id} not found`);
+        return;
+    }
+    const content = await (0, promises_1.readFile)(path, 'utf-8');
+    const workflow = JSON.parse(content);
+    const { WorkflowExecutor } = await Promise.resolve().then(() => __importStar(require('./workflow')));
+    const executor = new WorkflowExecutor();
+    await executor.initialize();
+    const result = await executor.execute(workflow);
+    log.green(`\nExecution ${result.id}:`);
+    log.gray(`  Status: ${result.status}`);
+    log.gray(`  Nodes executed: ${Object.keys(result.nodeResults).length}`);
+    if (result.error) {
+        log.red(`  Error: ${result.error}`);
+    }
+}
+async function ingestDocs(path) {
+    log.blue(`Ingesting documents from: ${path}`);
+    const { DocumentIngestion } = await Promise.resolve().then(() => __importStar(require('./workflow')));
+    const docs = new DocumentIngestion();
+    await docs.initialize();
+    const isDir = (0, fs_1.existsSync)(path) && (await Promise.resolve().then(() => __importStar(require('fs'))).then(fs => fs.statSync(path))).isDirectory();
+    if (isDir) {
+        const ingested = await docs.ingestDirectory(path);
+        log.green(`✓ Ingested ${ingested.length} documents`);
+    }
+    else {
+        const doc = await docs.ingestFile(path);
+        log.green(`✓ Ingested: ${doc.name}`);
+    }
 }
 //# sourceMappingURL=cli.js.map
