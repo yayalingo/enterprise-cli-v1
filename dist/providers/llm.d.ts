@@ -14,7 +14,9 @@ export declare class OpenAIProvider implements LLMInterface {
     private model;
     private maxTokens;
     private temperature;
+    private tools;
     constructor(config: LLMConfig);
+    setTools(toolDefs: any[]): void;
     chat(messages: Message[]): Promise<LLMResponse>;
     private convertMessages;
     private convertResponse;

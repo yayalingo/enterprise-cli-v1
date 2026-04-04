@@ -31,6 +31,16 @@ class ToolRegistry {
     getAll() {
         return Array.from(this.tools.values()).map(t => t.definition);
     }
+    getOpenAIFormat() {
+        return this.getAll().map(tool => ({
+            type: 'function',
+            function: {
+                name: tool.name,
+                description: tool.description,
+                parameters: tool.input_schema,
+            },
+        }));
+    }
     getNames() {
         return Array.from(this.tools.keys());
     }

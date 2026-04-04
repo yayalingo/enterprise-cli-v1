@@ -13,6 +13,7 @@ export declare class ToolRegistry {
     private register;
     get(name: string): ToolExecutor | undefined;
     getAll(): ToolDefinition[];
+    getOpenAIFormat(): any[];
     getNames(): string[];
     getBashTool(): BashTool;
 }

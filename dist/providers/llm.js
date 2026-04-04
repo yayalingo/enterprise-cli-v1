@@ -97,6 +97,7 @@ class OpenAIProvider {
     model;
     maxTokens;
     temperature;
+    tools = [];
     constructor(config) {
         this.client = new openai_1.default({
             apiKey: config.apiKey || process.env.OPENAI_API_KEY,
@@ -106,6 +107,9 @@ class OpenAIProvider {
         this.maxTokens = config.maxTokens || 4096;
         this.temperature = config.temperature || 1;
     }
+    setTools(toolDefs) {
+        this.tools = toolDefs;
+    }
     async chat(messages) {
         const openAIMessages = this.convertMessages(messages);
         const response = await this.client.chat.completions.create({
@@ -113,6 +117,7 @@ class OpenAIProvider {
             max_tokens: this.maxTokens,
             temperature: this.temperature,
             messages: openAIMessages,
+            tools: this.tools.length > 0 ? this.tools : undefined,
         });
         return this.convertResponse(response);
     }

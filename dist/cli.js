@@ -141,8 +141,11 @@ async function startChat(options) {
     log.gray('Starting chat session...\n');
     const cwd = options.cwd || process.cwd();
     const llmConfig = await getProviderConfig(options);
-    const provider = (0, llm_1.createLLMProvider)(llmConfig);
     const toolRegistry = new tools_1.ToolRegistry(cwd);
+    const provider = (0, llm_1.createLLMProvider)(llmConfig);
+    if ('setTools' in provider) {
+        provider.setTools(toolRegistry.getOpenAIFormat());
+    }
     const mode = (options.mode || 'default');
     const permissionGate = new gate_1.PermissionGate({ mode, rules: {} });
     const agent = new orchestrator_1.AgentOrchestrator({
@@ -216,8 +219,11 @@ Commands:
 async function runOnce(prompt, options) {
     const cwd = options.cwd || process.cwd();
     const llmConfig = await getProviderConfig(options);
-    const provider = (0, llm_1.createLLMProvider)(llmConfig);
     const toolRegistry = new tools_1.ToolRegistry(cwd);
+    const provider = (0, llm_1.createLLMProvider)(llmConfig);
+    if ('setTools' in provider) {
+        provider.setTools(toolRegistry.getOpenAIFormat());
+    }
     const mode = (options.mode || 'default');
     const permissionGate = new gate_1.PermissionGate({ mode, rules: {} });
     const agent = new orchestrator_1.AgentOrchestrator({

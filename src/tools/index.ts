@@ -35,6 +35,17 @@ export class ToolRegistry {
     return Array.from(this.tools.values()).map(t => t.definition);
   }
 
+  getOpenAIFormat(): any[] {
+    return this.getAll().map(tool => ({
+      type: 'function' as const,
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.input_schema,
+      },
+    }));
+  }
+
   getNames(): string[] {
     return Array.from(this.tools.keys());
   }

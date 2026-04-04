@@ -122,9 +122,12 @@ async function startChat(options: any) {
 
   const cwd = options.cwd || process.cwd();
   const llmConfig = await getProviderConfig(options);
-  const provider = createLLMProvider(llmConfig);
-
   const toolRegistry = new ToolRegistry(cwd);
+  
+  const provider = createLLMProvider(llmConfig);
+  if ('setTools' in provider) {
+    (provider as any).setTools(toolRegistry.getOpenAIFormat());
+  }
 
   const mode = (options.mode || 'default') as PermissionMode;
   const permissionGate = new PermissionGate({ mode, rules: {} });
@@ -210,9 +213,13 @@ Commands:
 async function runOnce(prompt: string, options: any) {
   const cwd = options.cwd || process.cwd();
   const llmConfig = await getProviderConfig(options);
-  const provider = createLLMProvider(llmConfig);
-
   const toolRegistry = new ToolRegistry(cwd);
+  
+  const provider = createLLMProvider(llmConfig);
+  if ('setTools' in provider) {
+    (provider as any).setTools(toolRegistry.getOpenAIFormat());
+  }
+
   const mode = (options.mode || 'default') as PermissionMode;
   const permissionGate = new PermissionGate({ mode, rules: {} });
 

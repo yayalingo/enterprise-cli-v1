@@ -102,6 +102,7 @@ export class OpenAIProvider implements LLMInterface {
   private model: string;
   private maxTokens: number;
   private temperature: number;
+  private tools: any[] = [];
 
   constructor(config: LLMConfig) {
     this.client = new OpenAI({
@@ -113,6 +114,10 @@ export class OpenAIProvider implements LLMInterface {
     this.temperature = config.temperature || 1;
   }
 
+  setTools(toolDefs: any[]): void {
+    this.tools = toolDefs;
+  }
+
   async chat(messages: Message[]): Promise<LLMResponse> {
     const openAIMessages = this.convertMessages(messages);
 
@@ -121,6 +126,7 @@ export class OpenAIProvider implements LLMInterface {
       max_tokens: this.maxTokens,
       temperature: this.temperature,
       messages: openAIMessages as any,
+      tools: this.tools.length > 0 ? this.tools as any : undefined,
     });
 
     return this.convertResponse(response);
