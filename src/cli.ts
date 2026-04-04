@@ -15,41 +15,28 @@ program
   .version('1.0.0');
 
 program
+  .option('-m, --model <model>', 'Model to use')
+  .option('-p, --provider <provider>', 'Provider (anthropic|openai|ollama|custom)')
+  .option('--base-url <url>', 'Custom API base URL')
+  .option('--api-key <key>', 'API key')
+  .option('--mode <mode>', 'Permission mode (default|acceptEdits|plan|auto)')
+  .option('-c, --cwd <directory>', 'Working directory', process.cwd());
+
+program
   .command('chat')
   .description('Start an interactive chat session')
-  .option('-m, --model <model>', 'Model to use', 'claude-sonnet-4-20250514')
-  .option('-p, --provider <provider>', 'Provider (anthropic|openai|ollama|custom)', 'anthropic')
-  .option('--base-url <url>', 'Custom API base URL (for custom provider)')
-  .option('--api-key <key>', 'API key (for custom/openai provider)')
-  .option('--mode <mode>', 'Permission mode (default|acceptEdits|plan|auto)', 'default')
-  .option('-c, --cwd <directory>', 'Working directory', process.cwd())
   .action(async (options) => {
-    await startChat(options);
+    await startChat({ ...program.opts(), ...options });
   });
 
 program
-  .command('run')
+  .command('run <prompt>')
   .description('Run a single prompt')
-  .argument('<prompt>', 'Prompt to execute')
-  .option('-m, --model <model>', 'Model to use')
-  .option('-p, --provider <provider>', 'Provider')
-  .option('--base-url <url>', 'Custom API base URL')
-  .option('--api-key <key>', 'API key')
-  .option('--mode <mode>', 'Permission mode')
-  .option('-c, --cwd <directory>', 'Working directory')
   .action(async (prompt, options) => {
-    await runOnce(prompt, options);
+    await runOnce(prompt, { ...program.opts(), ...options });
   });
 
-program
-  .option('-m, --model <model>', 'Model to use')
-  .option('-p, --provider <provider>', 'Provider')
-  .option('--base-url <url>', 'Custom API base URL')
-  .option('--api-key <key>', 'API key')
-  .option('--mode <mode>', 'Permission mode')
-  .action(async () => {
-    await startChat(program.opts());
-  });
+program.parse();
 
 const log = {
   blue: (s: string) => console.log('\x1b[36m' + s + '\x1b[0m'),
@@ -59,6 +46,10 @@ const log = {
   white: (s: string) => console.log(s),
   yellow: (s: string) => console.log('\x1b[33m' + s + '\x1b[0m'),
 };
+
+function join(...paths: string[]): string {
+  return paths.join('/').replace(/\/+/g, '/');
+}
 
 async function loadConfig() {
   const configPaths = [
@@ -101,7 +92,9 @@ async function getProviderConfig(cmdOptions: any): Promise<LLMConfig> {
     baseUrl = cmdOptions.baseUrl || config?.baseUrl || 'https://api.scnet.cn/api/llm/v1';
     apiKey = cmdOptions.apiKey || process.env.OPENAI_API_KEY;
     model = cmdOptions.model || config?.model || 'gpt-4o';
-    
+  }
+
+  if (!apiKey && provider === 'custom') {
     if (!baseUrl) {
       log.red('Error: --base-url is required for custom provider');
       log.yellow('Example: --base-url https://api.scnet.cn/api/llm/v1');
@@ -114,10 +107,9 @@ async function getProviderConfig(cmdOptions: any): Promise<LLMConfig> {
     }
   }
 
-  if (!apiKey && provider !== 'ollama') {
-    log.yellow('No API key found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY, or use --api-key');
-    log.yellow('Usage: export ANTHROPIC_API_KEY=sk-ant-...');
-    log.yellow('Or: enterprise chat --provider custom --api-key your-key --base-url https://api.scnet.cn/api/llm/v1');
+  if (!apiKey && provider !== 'ollama' && provider !== 'custom') {
+    log.yellow('No API key found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY');
+    log.yellow('Or use: --provider custom --api-key your-key --base-url https://api.scnet.cn/api/llm/v1');
     process.exit(1);
   }
 
@@ -148,12 +140,10 @@ async function startChat(options: any) {
   await agent.initialize();
 
   log.green('Ready!');
+  log.gray(`Provider: ${llmConfig.provider}`);
+  log.gray(`Model: ${llmConfig.model}`);
   log.gray(`Permission mode: ${permissionGate.getModeDescription()}`);
   log.gray(`Working directory: ${cwd}\n`);
-
-  if (options.provider === 'ollama') {
-    log.yellow('Note: Using Ollama - make sure it\'s running on localhost:11434\n');
-  }
 
   const readline = await import('readline');
   const rl = readline.createInterface({
@@ -244,9 +234,3 @@ async function runOnce(prompt: string, options: any) {
     process.exit(1);
   }
 }
-
-function join(...paths: string[]): string {
-  return paths.join('/').replace(/\/+/g, '/');
-}
-
-program.parse();
