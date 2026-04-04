@@ -189,6 +189,9 @@ Available tools: Read, Edit, Write, Bash, Grep, Glob${skillsSection}`;
     setPermissionMode(mode) {
         this.config.permissionGate.setMode(mode);
     }
+    getPermissionMode() {
+        return this.config.permissionGate.getMode();
+    }
     getMessages() {
         return this.messages;
     }

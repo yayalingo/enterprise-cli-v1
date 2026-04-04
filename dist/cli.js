@@ -59,6 +59,19 @@ program
     await listSkills();
 });
 program
+    .command('tui')
+    .description('Start TUI interface')
+    .action(async (options) => {
+    await startTUI({ ...program.opts(), ...options });
+});
+program
+    .command('web')
+    .description('Start Web GUI')
+    .option('-p, --port <port>', 'Port number', '3000')
+    .action(async (options) => {
+    await startWeb({ ...program.opts(), ...options });
+});
+program
     .command('chat')
     .description('Start an interactive chat session')
     .option('-s, --session <id>', 'Resume session by ID')
@@ -365,5 +378,39 @@ async function listSkills() {
     }
     log.gray('\nTo use a skill, just mention it in your prompt.');
     log.gray('Example: "Use the pdf skill to extract text from document.pdf"');
+}
+async function startTUI(options) {
+    log.blue('Starting TUI mode...\n');
+    const cwd = options.cwd || process.cwd();
+    const llmConfig = await getProviderConfig(options);
+    const toolRegistry = new tools_1.ToolRegistry(cwd);
+    const provider = (0, llm_1.createLLMProvider)(llmConfig);
+    if ('setTools' in provider) {
+        provider.setTools(toolRegistry.getOpenAIFormat());
+    }
+    const mode = (options.mode || 'default');
+    const { TUIManager } = await Promise.resolve().then(() => __importStar(require('./tui')));
+    const tui = new TUIManager({
+        provider,
+        cwd,
+        model: llmConfig.model,
+        permissionMode: mode,
+    });
+    await tui.start();
+}
+async function startWeb(options) {
+    log.blue('Starting Web GUI...\n');
+    const cwd = options.cwd || process.cwd();
+    const llmConfig = await getProviderConfig(options);
+    const port = parseInt(options.port) || 3000;
+    log.green(`🌐 Web GUI will be available at http://localhost:${port}`);
+    const { WebManager } = await Promise.resolve().then(() => __importStar(require('./web')));
+    const web = new WebManager({
+        llmConfig,
+        cwd,
+        permissionMode: (options.mode || 'default'),
+        port,
+    });
+    web.start(port);
 }
 //# sourceMappingURL=cli.js.map

@@ -25,6 +25,7 @@ export declare class AgentOrchestrator {
     private detectSkillInvocation;
     getToolDefinitions(): ToolDefinition[];
     setPermissionMode(mode: PermissionMode): void;
+    getPermissionMode(): PermissionMode;
     getMessages(): Message[];
     getWorkingDirectory(): string;
 }

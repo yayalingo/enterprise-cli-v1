@@ -230,6 +230,10 @@ Available tools: Read, Edit, Write, Bash, Grep, Glob${skillsSection}`;
     this.config.permissionGate.setMode(mode);
   }
 
+  getPermissionMode(): PermissionMode {
+    return this.config.permissionGate.getMode();
+  }
+
   getMessages(): Message[] {
     return this.messages;
   }
