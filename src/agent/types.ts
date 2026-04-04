@@ -42,7 +42,7 @@ export interface ToolResult {
   is_error?: boolean;
 }
 
-export type ProviderType = 'anthropic' | 'openai' | 'ollama';
+export type ProviderType = 'anthropic' | 'openai' | 'ollama' | 'custom';
 
 export interface LLMConfig {
   provider: ProviderType;

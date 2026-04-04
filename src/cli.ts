@@ -18,7 +18,9 @@ program
   .command('chat')
   .description('Start an interactive chat session')
   .option('-m, --model <model>', 'Model to use', 'claude-sonnet-4-20250514')
-  .option('-p, --provider <provider>', 'Provider (anthropic|openai|ollama)', 'anthropic')
+  .option('-p, --provider <provider>', 'Provider (anthropic|openai|ollama|custom)', 'anthropic')
+  .option('--base-url <url>', 'Custom API base URL (for custom provider)')
+  .option('--api-key <key>', 'API key (for custom/openai provider)')
   .option('--mode <mode>', 'Permission mode (default|acceptEdits|plan|auto)', 'default')
   .option('-c, --cwd <directory>', 'Working directory', process.cwd())
   .action(async (options) => {
@@ -31,6 +33,8 @@ program
   .argument('<prompt>', 'Prompt to execute')
   .option('-m, --model <model>', 'Model to use')
   .option('-p, --provider <provider>', 'Provider')
+  .option('--base-url <url>', 'Custom API base URL')
+  .option('--api-key <key>', 'API key')
   .option('--mode <mode>', 'Permission mode')
   .option('-c, --cwd <directory>', 'Working directory')
   .action(async (prompt, options) => {
@@ -40,6 +44,8 @@ program
 program
   .option('-m, --model <model>', 'Model to use')
   .option('-p, --provider <provider>', 'Provider')
+  .option('--base-url <url>', 'Custom API base URL')
+  .option('--api-key <key>', 'API key')
   .option('--mode <mode>', 'Permission mode')
   .action(async () => {
     await startChat(program.opts());
@@ -82,19 +88,36 @@ async function getProviderConfig(cmdOptions: any): Promise<LLMConfig> {
   let model = cmdOptions.model || config?.defaultModel;
 
   if (provider === 'anthropic') {
-    apiKey = process.env.ANTHROPIC_API_KEY;
+    apiKey = cmdOptions.apiKey || process.env.ANTHROPIC_API_KEY;
     model = model || 'claude-sonnet-4-20250514';
   } else if (provider === 'openai') {
-    apiKey = process.env.OPENAI_API_KEY;
+    apiKey = cmdOptions.apiKey || process.env.OPENAI_API_KEY;
+    baseUrl = cmdOptions.baseUrl || config?.baseUrl;
     model = model || 'gpt-4o';
   } else if (provider === 'ollama') {
-    baseUrl = 'http://localhost:11434';
+    baseUrl = cmdOptions.baseUrl || 'http://localhost:11434';
     model = model || 'llama3';
+  } else if (provider === 'custom') {
+    baseUrl = cmdOptions.baseUrl || config?.baseUrl || 'https://api.scnet.cn/api/llm/v1';
+    apiKey = cmdOptions.apiKey || process.env.OPENAI_API_KEY;
+    model = cmdOptions.model || config?.model || 'gpt-4o';
+    
+    if (!baseUrl) {
+      log.red('Error: --base-url is required for custom provider');
+      log.yellow('Example: --base-url https://api.scnet.cn/api/llm/v1');
+      process.exit(1);
+    }
+    if (!apiKey) {
+      log.red('Error: --api-key is required for custom provider');
+      log.yellow('Example: --api-key your-api-key');
+      process.exit(1);
+    }
   }
 
   if (!apiKey && provider !== 'ollama') {
-    log.yellow('No API key found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY');
+    log.yellow('No API key found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY, or use --api-key');
     log.yellow('Usage: export ANTHROPIC_API_KEY=sk-ant-...');
+    log.yellow('Or: enterprise chat --provider custom --api-key your-key --base-url https://api.scnet.cn/api/llm/v1');
     process.exit(1);
   }
 

@@ -228,6 +228,7 @@ function createLLMProvider(config) {
         case 'anthropic':
             return new AnthropicProvider(config);
         case 'openai':
+        case 'custom':
             return new OpenAIProvider(config);
         case 'ollama':
             return new OllamaProvider(config);

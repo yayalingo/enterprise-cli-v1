@@ -44,7 +44,7 @@ export interface ToolResult {
     content: string;
     is_error?: boolean;
 }
-export type ProviderType = 'anthropic' | 'openai' | 'ollama';
+export type ProviderType = 'anthropic' | 'openai' | 'ollama' | 'custom';
 export interface LLMConfig {
     provider: ProviderType;
     apiKey?: string;
